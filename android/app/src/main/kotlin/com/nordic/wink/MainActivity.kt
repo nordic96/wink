@@ -1,4 +1,4 @@
-package com.example.wink
+package com.nordic.wink
 
 import io.flutter.embedding.android.FlutterActivity
 
