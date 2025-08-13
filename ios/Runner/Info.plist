@@ -45,5 +45,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app needs to find and connect with nearby devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_winkpeer._tcp</string>
+	</array>
 </dict>
 </plist>

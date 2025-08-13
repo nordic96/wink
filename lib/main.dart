@@ -1,7 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const MyApp());
+}
+
+class PeerService {
+  static const _channel = MethodChannel('com.nordic.wink');
+
+  static Future<void> startAdvertising(String username) async {
+    await _channel.invokeMethod('startAdvertising', {'username': username});
+  }
+
+  static Future<void> startDiscovery() async {
+    await _channel.invokeMethod('startDiscovery');
+  }
+
+  static Future<void> stopAll() async {
+    await _channel.invokeMethod('stopAll');
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -54,16 +71,18 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  final _usernameController = TextEditingController();
+  List<String> _foundPeers = [];
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  @override
+  void initState() {
+    super.initState();
+
+    const eventChannel = EventChannel('com.nordic.wink/events');
+    eventChannel.receiveBroadcastStream().listen((event) {
+      setState(() {
+        _foundPeers.add(event.toString());
+      });
     });
   }
 
@@ -85,38 +104,43 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+          children: [
+            TextField(
+              controller: _usernameController,
+              decoration: const InputDecoration(labelText: "Your Username"),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () =>
+                  PeerService.startAdvertising(_usernameController.text),
+              child: const Text("Start Advertising"),
+            ),
+            ElevatedButton(
+              onPressed: PeerService.startDiscovery,
+              child: const Text("Start Discovery"),
+            ),
+            ElevatedButton(
+              onPressed: PeerService.stopAll,
+              child: const Text("Stop"),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              "Nearby Peers:",
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            Expanded(
+              child: ListView.builder(
+                itemCount: _foundPeers.length,
+                itemBuilder: (context, index) =>
+                    ListTile(title: Text(_foundPeers[index])),
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
