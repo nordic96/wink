@@ -12,13 +12,13 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
     private var peripheralManager: CBPeripheralManager!
     private var username: String = "Unknown"
     
-    private var service: CBMutableService?
-    private var characteristic: CBMutableCharacteristic?
+    private var service: CBMutableService!
+    private var characteristic: CBMutableCharacteristic!
     
     private var pendingStartUsername: String?
     
-    private let serviceUUID = CBUUID(string: "180a")
-    private let charUUID    = CBUUID(string: "abcd")
+    private let serviceUUID = CBUUID(string: "96AB")
+    private let charUUID    = CBUUID(string: "00001234-1234-1234-1234-123456789012")
     
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "com.nordic.wink/ble_peripheral", binaryMessenger: registrar.messenger())
@@ -49,35 +49,41 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
         }
     }
     
-    private func startPeripheral(username: String) {
-        self.username = username
+    private func setupService(username: String) {
+        characteristic = CBMutableCharacteristic(
+            type: charUUID,
+            properties: [.read, .write, .notify],
+            value: nil,
+            permissions: [.readable, .writeable]
+        )
 
+        service = CBMutableService(type: serviceUUID, primary: true)
+        service.characteristics = [characteristic]
+        
+        peripheralManager.add(service)
+        print("[ios] service added to peripheralManager", service!)
+    }
+    
+    private func startPeripheral(username: String) {
+        if peripheralManager.isAdvertising {
+            print("[startPeripheral] already advertising... stopping services")
+            stopPeripheral()
+        }
+        self.username = username
+        
         // If not powered on, defer until the state updates
         if peripheralManager.state != .poweredOn {
+            print("peripheralManager state", peripheralManager.state.rawValue)
             pendingStartUsername = username
             return
         }
 
-        // Rebuild services each time (ensures username value is up to date)
-        peripheralManager.stopAdvertising()
-        peripheralManager.removeAllServices()
-
-        characteristic = CBMutableCharacteristic(
-            type: charUUID,
-            properties: [.read],
-            value: username.data(using: .utf8),   // read-only static value
-            permissions: [.readable]
-        )
-
-        service = CBMutableService(type: serviceUUID, primary: true)
-        service?.characteristics = [characteristic!]
-
-        peripheralManager.add(service!)
         let shortName = String(username.prefix(20))
         peripheralManager.startAdvertising([
             CBAdvertisementDataServiceUUIDsKey: [serviceUUID],
             CBAdvertisementDataLocalNameKey: shortName
         ])
+        print("ios started advertising... isAdvertising: ", peripheralManager.isAdvertising)
     }
     
     private func stopPeripheral() {
@@ -89,10 +95,9 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
     func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         switch peripheral.state {
         case .poweredOn:
-            if let name = pendingStartUsername {
-                pendingStartUsername = nil
-                startPeripheral(username: name)
-            }
+            print("Bluetooth powered on: username: ", self.username)
+            setupService(username: self.username)
+            //startPeripheral(username: self.username)
         default:
             // Stop if we lose power or are restricted
             stopPeripheral()

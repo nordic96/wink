@@ -9,7 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 // A unique Service UUID for our application.
 // You can generate your own using an online UUID generator.
-final Uuid serviceUuid = Uuid.parse("12345678-1234-1234-1234-123456789012");
+final Uuid serviceUuid = Uuid.parse("96AB");
 
 class BleService with ChangeNotifier {
   final Logger logger = Logger();
@@ -78,6 +78,7 @@ class BleService with ChangeNotifier {
             final knownDeviceIndex = _discoveredDevices.toList().indexWhere(
               (d) => d.id == device.id,
             );
+            logger.d(knownDeviceIndex);
             if (knownDeviceIndex < 0) {
               _discoveredDevices.add(device);
               notifyListeners();

@@ -21,8 +21,8 @@ class BlePeripheral(
 ) {
     private val channel = MethodChannel(messenger, "com.nordic.wink/ble_peripheral")
 
-    private val serviceUUID = java.util.UUID.fromString("180a")
-    private val charUUID    = java.util.UUID.fromString("abcd")
+    private val serviceUUID = java.util.UUID.fromString(context.getString(R.string.service_uuid))
+    private val charUUID    = java.util.UUID.fromString("00001234-1234-1234-1234-123456789012")
 
     private val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val btAdapter: BluetoothAdapter? = btManager.adapter
@@ -109,9 +109,11 @@ class BlePeripheral(
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .build()
 
+        val pUuid = ParcelUuid(serviceUUID)
+        val serviceData = "Data"
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(true)
-            .addServiceUuid(ParcelUuid(serviceUUID))
+            .addServiceUuid(pUuid)
             .build()
 
         if (advertiser == null) {
@@ -121,12 +123,14 @@ class BlePeripheral(
         advertiseCallback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
                 Log.d("BlePeripheral", "Advertising started (Android)")
+                super.onStartSuccess(settingsInEffect)
             }
             override fun onStartFailure(errorCode: Int) {
                 Log.e("BlePeripheral", "Advertising failed: $errorCode")
+                super.onStartFailure(errorCode)
             }
         }
-
+        Log.d("BlePeripheral", data.toString());
         advertiser?.startAdvertising(settings, data, advertiseCallback)
     }
 
