@@ -45,11 +45,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>This app needs to find and connect with nearby devices.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_winkpeer._tcp</string>
-	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app uses Bluetooth to discover and connect nearby devices</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>This app uses Bluetooth to advertise to nearby devices</string>
 </dict>
 </plist>

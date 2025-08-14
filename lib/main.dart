@@ -1,141 +1,180 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+final _serviceUuid = Uuid.parse("180a");
+final _charUuid = Uuid.parse("abcd");
 
 void main() {
-  runApp(const MyApp());
+  runApp(const MaterialApp(home: HomePage()));
 }
 
-class PeerService {
-  static const _channel = MethodChannel('com.nordic.wink');
-
-  static Future<void> startAdvertising(String username) async {
-    await _channel.invokeMethod('startAdvertising', {'username': username});
-  }
-
-  static Future<void> startDiscovery() async {
-    await _channel.invokeMethod('startDiscovery');
-  }
-
-  static Future<void> stopAll() async {
-    await _channel.invokeMethod('stopAll');
-  }
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
+  State<HomePage> createState() => _HomePageState();
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class _HomePageState extends State<HomePage> {
+  final _ble = FlutterReactiveBle();
+  final _peripheralChannel = const MethodChannel(
+    "com.nordic.wink/ble_peripheral",
+  );
+  final _usernameController = TextEditingController(text: "WinkUser");
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  final _usernameController = TextEditingController();
-  List<String> _foundPeers = [];
+  bool _isAdvertising = false;
+  bool _isScanning = false;
+  final List<_Peer> _peers = [];
+  StreamSubscription<DiscoveredDevice>? _scanSub;
 
   @override
   void initState() {
     super.initState();
+    _requestPermissions();
+  }
 
-    const eventChannel = EventChannel('com.nordic.wink/events');
-    eventChannel.receiveBroadcastStream().listen((event) {
-      setState(() {
-        _foundPeers.add(event.toString());
-      });
+  Future<void> _requestPermissions() async {
+    // Ask for location (pre-Android 12), Bluetooth (Android 12+), Bluetooth on iOS auto-prompts
+    await [
+      Permission.bluetoothScan,
+      Permission.bluetoothAdvertise,
+      Permission.bluetoothConnect,
+      Permission.locationWhenInUse,
+    ].request();
+  }
+
+  Future<void> _startPeripheral() async {
+    await _peripheralChannel.invokeMethod("startPeripheral", {
+      "username": _usernameController.text.trim(),
     });
+    setState(() => _isAdvertising = true);
+  }
+
+  Future<void> _stopPeripheral() async {
+    await _peripheralChannel.invokeMethod("stopPeripheral");
+    setState(() => _isAdvertising = false);
+  }
+
+  void _startScan() {
+    if (_isScanning) return;
+    setState(() {
+      _peers.clear();
+      _isScanning = true;
+    });
+
+    _scanSub = _ble
+        .scanForDevices(
+          withServices: [_serviceUuid],
+          scanMode: ScanMode.lowLatency,
+        )
+        .listen(
+          (device) async {
+            if (_peers.any((p) => p.id == device.id)) return;
+
+            // Immediately try to connect and read username characteristic
+            try {
+              final connection = _ble.connectToDevice(id: device.id);
+              final sub = connection.listen((c) async {
+                if (c.connectionState == DeviceConnectionState.connected) {
+                  final qc = QualifiedCharacteristic(
+                    serviceId: _serviceUuid,
+                    characteristicId: _charUuid,
+                    deviceId: device.id,
+                  );
+                  String username = device.name.isNotEmpty
+                      ? device.name
+                      : device.id;
+                  try {
+                    final value = await _ble.readCharacteristic(qc);
+                    if (value.isNotEmpty) {
+                      username = utf8.decode(value, allowMalformed: true);
+                    }
+                  } catch (_) {}
+                  setState(
+                    () => _peers.add(_Peer(id: device.id, name: username)),
+                  );
+                  _stopScan();
+                  // sub.cancel();
+                  // _ble.disconnectDevice(id: device.id);
+                }
+              });
+            } catch (_) {}
+          },
+          onError: (e) {
+            setState(() => _isScanning = false);
+          },
+        );
+  }
+
+  void _stopScan() {
+    _scanSub?.cancel();
+    _scanSub = null;
+    setState(() => _isScanning = false);
+    // flutter_reactive_ble stops scan by cancelling subscription
+  }
+
+  @override
+  void dispose() {
+    _stopScan();
+    _stopPeripheral();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
+      appBar: AppBar(title: const Text("Wink BLE Nearby")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             TextField(
               controller: _usernameController,
-              decoration: const InputDecoration(labelText: "Your Username"),
+              decoration: const InputDecoration(labelText: "Your username"),
             ),
             const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () =>
-                  PeerService.startAdvertising(_usernameController.text),
-              child: const Text("Start Advertising"),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isAdvertising
+                        ? _stopPeripheral
+                        : _startPeripheral,
+                    child: Text(
+                      _isAdvertising ? "Stop Advertising" : "Start Advertising",
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: _isScanning ? _stopScan : _startScan,
+                    child: Text(
+                      _isScanning ? "Stop Scanning" : "Start Scanning",
+                    ),
+                  ),
+                ),
+              ],
             ),
-            ElevatedButton(
-              onPressed: PeerService.startDiscovery,
-              child: const Text("Start Discovery"),
-            ),
-            ElevatedButton(
-              onPressed: PeerService.stopAll,
-              child: const Text("Stop"),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              "Nearby Peers:",
-              style: TextStyle(fontWeight: FontWeight.bold),
+            const SizedBox(height: 16),
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Nearby peers",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             ),
             Expanded(
               child: ListView.builder(
-                itemCount: _foundPeers.length,
-                itemBuilder: (context, index) =>
-                    ListTile(title: Text(_foundPeers[index])),
+                itemCount: _peers.length,
+                itemBuilder: (_, i) => ListTile(
+                  leading: const Icon(Icons.bluetooth),
+                  title: Text(_peers[i].name),
+                  subtitle: Text(_peers[i].id),
+                ),
               ),
             ),
           ],
@@ -143,4 +182,10 @@ class _MyHomePageState extends State<MyHomePage> {
       ),
     );
   }
+}
+
+class _Peer {
+  final String id;
+  final String name;
+  _Peer({required this.id, required this.name});
 }
