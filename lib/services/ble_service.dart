@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:logger/logger.dart';
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
+import 'package:flutter_reactive_ble/flutter_reactive_ble.dart' hide Logger;
 import 'package:permission_handler/permission_handler.dart';
 
 // A unique Service UUID for our application.
@@ -10,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 final Uuid serviceUuid = Uuid.parse("12345678-1234-1234-1234-123456789012");
 
 class BleService with ChangeNotifier {
+  final Logger logger = Logger();
   //Custom Added Peripheral Channel residing natively
   final _peripheralChannel = const MethodChannel(
     "com.nordic.wink/ble_peripheral",
@@ -81,12 +84,12 @@ class BleService with ChangeNotifier {
             }
           },
           onError: (e) {
-            print("Scan Error: $e");
+            logger.e("Scan Error: $e");
           },
         );
     _isScanning = true;
     notifyListeners();
-    print("Started Scanning");
+    logger.i("Started Scanning");
   }
 
   void stopScan() {
@@ -94,33 +97,31 @@ class BleService with ChangeNotifier {
     discoveredDevices.clear();
     _isScanning = false;
     notifyListeners();
-    print("Stopped Scanning");
+    logger.i("Stopped Scanning");
   }
 
   Future<void> startAdvertising() async {
-    print("startAdvertising(): isAdvertising: $_isAdvertising");
     if (_isAdvertising) return;
     try {
       await _peripheralChannel.invokeMethod("startPeripheral", {
         "username": "testusername",
       });
     } catch (e) {
-      print("Error while invoking startPeripheral via channeling: $e");
+      logger.e("Error while invoking startPeripheral via channeling: $e");
     }
     _isAdvertising = true;
     notifyListeners();
-    print("Started Advertising...");
+    logger.i("Started Advertising...");
   }
 
   Future<void> stopAdvertising() async {
-    print("stopAdvertising(): isAdvertising: $_isAdvertising");
     try {
       await _peripheralChannel.invokeMethod("stopPeripheral");
     } catch (e) {
-      print("Error while stopping advertising via channel: $e");
+      logger.e("Error while stopping advertising via channel: $e");
     }
     _isAdvertising = false;
     notifyListeners();
-    print("Stopped Advertising...");
+    logger.i("Stopped Advertising...");
   }
 }
