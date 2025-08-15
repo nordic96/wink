@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart' hide Logger;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:wink/utils/uuid_utils.dart';
 
 // A unique Service UUID for our application.
 final Uuid serviceUuid = Uuid.parse(dotenv.get("SERVICE_UUID"));
@@ -69,8 +70,7 @@ class BleService with ChangeNotifier {
     _scanSubscription = _ble
         .scanForDevices(
           // TODO: comment/uncomment to test scanning functionality
-          //withServices: [serviceUuid],
-          withServices: [],
+          withServices: [serviceUuid],
           scanMode: ScanMode.lowLatency,
         )
         .listen(
@@ -130,41 +130,60 @@ class BleService with ChangeNotifier {
   }
 
   Future<void> connectAndPing(String deviceId) async {
-    final connectionStream = _ble.connectToDevice(id: deviceId);
+    final connectionStream = _ble.connectToDevice(
+      id: deviceId,
+      connectionTimeout: const Duration(seconds: 10),
+    );
+    late StreamSubscription<ConnectionStateUpdate> sub;
 
-    await for (final update in connectionStream) {
+    sub = connectionStream.listen((update) async {
+      logger.d("[BLE] Connection State: ${update.connectionState}");
       if (update.connectionState == DeviceConnectionState.connected) {
-        logger.d("✅ Connected to $deviceId");
+        logger.d("[BLE] ✅ Connected to $deviceId");
+        try {
+          logger.d("[BLE] Discovering Services...");
+          final services = await _ble.getDiscoveredServices(deviceId);
+          logger.d(
+            "[BLE] Services Discovered: ${services.map((s) => s.id).toList()}",
+          );
+          logger.d("[BLE] service uuid: $serviceUuid");
+          final service = services.firstWhere(
+            (s) =>
+                s.id == serviceUuid ||
+                UuidUtils.isLongShortUuidEqual(s.id, serviceUuid),
+            orElse: () => throw Exception("Service not found"),
+          );
 
-        await _ble.discoverAllServices(deviceId);
-        final services = await _ble.getDiscoveredServices(deviceId);
+          final characteristic = service.characteristics.firstWhere(
+            (c) =>
+                c.id == pingUuid ||
+                UuidUtils.isLongShortUuidEqual(c.id, pingUuid),
+            orElse: () => throw Exception("Characteristic not found"),
+          );
+          logger.d("[BLE] Characteristic found: $characteristic");
 
-        final service = services.firstWhere(
-          (s) => s.id == serviceUuid,
-          orElse: () => throw Exception("Service not found"),
-        );
+          final qualifiedChar = QualifiedCharacteristic(
+            characteristicId: pingUuid,
+            serviceId: serviceUuid,
+            deviceId: deviceId,
+          );
 
-        final characteristic = service.characteristics.firstWhere(
-          (c) => c.id == pingUuid,
-          orElse: () => throw Exception("Ping characteristic not found"),
-        );
-        logger.d(characteristic);
-
-        final qualifiedChar = QualifiedCharacteristic(
-          characteristicId: pingUuid,
-          serviceId: serviceUuid,
-          deviceId: deviceId,
-        );
-
-        final message = "PING-${DateTime.now().millisecondsSinceEpoch}";
-        await _ble.writeCharacteristicWithoutResponse(
-          qualifiedChar,
-          value: message.codeUnits,
-        );
+          logger.d("[BLE] Writing ping message...");
+          await _ble.writeCharacteristicWithResponse(
+            qualifiedChar,
+            value: "PING".codeUnits,
+          );
+          logger.d("[BLE] Ping sent successfully");
+        } catch (e) {
+          logger.e("[BLE] Error during ping $e");
+        } finally {
+          await sub.cancel();
+          notifyListeners();
+        }
+      } else if (update.connectionState == DeviceConnectionState.disconnected) {
+        logger.d("[BLE] Disconnected from device: $deviceId");
         notifyListeners();
-        logger.d("📤 Sent ping: $message");
-        break;
       }
-    }
+    });
   }
 }

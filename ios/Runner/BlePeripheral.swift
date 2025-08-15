@@ -50,7 +50,7 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
     }
     
     private func setupService(username: String) {
-        let properties: CBCharacteristicProperties = [.write, .writeWithoutResponse, .notify]
+        let properties: CBCharacteristicProperties = [.write, .writeWithoutResponse, .notify, .read]
         let permissions: CBAttributePermissions = [.writeable, .readable]
         pingCharacteristics = CBMutableCharacteristic(
             type: pingCharUUID,
