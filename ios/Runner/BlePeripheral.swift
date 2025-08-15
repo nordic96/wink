@@ -13,12 +13,12 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
     private var username: String = "Unknown"
     
     private var service: CBMutableService!
-    private var characteristic: CBMutableCharacteristic!
+    private var pingCharacteristics: CBMutableCharacteristic!
     
     private var pendingStartUsername: String?
     
     private let serviceUUID = CBUUID(string: "96AB")
-    private let charUUID    = CBUUID(string: "00001234-1234-1234-1234-123456789012")
+    private let pingCharUUID = CBUUID(string: "96AC")
     
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: "com.nordic.wink/ble_peripheral", binaryMessenger: registrar.messenger())
@@ -50,15 +50,17 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
     }
     
     private func setupService(username: String) {
-        characteristic = CBMutableCharacteristic(
-            type: charUUID,
-            properties: [.read, .write, .notify],
+        let properties: CBCharacteristicProperties = [.write, .writeWithoutResponse, .notify]
+        let permissions: CBAttributePermissions = [.writeable, .readable]
+        pingCharacteristics = CBMutableCharacteristic(
+            type: pingCharUUID,
+            properties: properties,
             value: nil,
-            permissions: [.readable, .writeable]
+            permissions: permissions
         )
 
         service = CBMutableService(type: serviceUUID, primary: true)
-        service.characteristics = [characteristic]
+        service.characteristics = [pingCharacteristics]
         
         peripheralManager.add(service)
         print("[ios] service added to peripheralManager", service!)
@@ -79,11 +81,8 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
         }
 
         let shortName = String(username.prefix(20))
-        peripheralManager.startAdvertising([
-            CBAdvertisementDataServiceUUIDsKey: [serviceUUID],
-            CBAdvertisementDataLocalNameKey: shortName
-        ])
-        print("ios started advertising... isAdvertising: ", peripheralManager.isAdvertising)
+        setupService(username: shortName)
+        print("ios started advertising...")
     }
     
     private func stopPeripheral() {
@@ -96,11 +95,32 @@ class BlePeripheral: NSObject, FlutterPlugin, CBPeripheralManagerDelegate {
         switch peripheral.state {
         case .poweredOn:
             print("Bluetooth powered on: username: ", self.username)
-            setupService(username: self.username)
-            //startPeripheral(username: self.username)
         default:
             // Stop if we lose power or are restricted
             stopPeripheral()
+        }
+    }
+    
+    func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+        if error != nil {
+            print("❌ Failed to add service: \(error!)")
+            return
+        }
+        peripheralManager.startAdvertising([
+            CBAdvertisementDataLocalNameKey: "WinkDevice",
+            CBAdvertisementDataServiceUUIDsKey: [serviceUUID]
+        ])
+        print("✅ Advertising started after service added")
+    }
+    
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+        for request in requests {
+            if request.characteristic.uuid == pingCharUUID,
+               let value = request.value,
+               let message = String(data: value, encoding: .utf8) {
+                print("📩 Received ping: \(message)")
+            }
+            peripheralManager.respond(to: request, withResult: .success)
         }
     }
 }

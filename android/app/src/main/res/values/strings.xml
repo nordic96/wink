@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="service_uuid">000096AB-0000-1000-8000-00805F9B34FB</string>
+    <string name="ping_char_uuid">"000096AC-0000-1000-8000-00805F9B34FB"</string>
 </resources>

@@ -22,7 +22,7 @@ class BlePeripheral(
     private val channel = MethodChannel(messenger, "com.nordic.wink/ble_peripheral")
 
     private val serviceUUID = java.util.UUID.fromString(context.getString(R.string.service_uuid))
-    private val charUUID    = java.util.UUID.fromString("00001234-1234-1234-1234-123456789012")
+    private val pingCharUUID    = java.util.UUID.fromString(context.getString(R.string.ping_char_uuid))
 
     private val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
     private val btAdapter: BluetoothAdapter? = btManager.adapter
@@ -72,20 +72,38 @@ class BlePeripheral(
                 offset: Int,
                 characteristic: BluetoothGattCharacteristic
             ) {
-                if (characteristic.uuid == charUUID) {
+                if (characteristic.uuid == pingCharUUID) {
                     val value = if (offset == 0) usernameValue else byteArrayOf()
                     gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
                 } else {
                     gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_FAILURE, offset, null)
                 }
             }
+
+            override fun onCharacteristicWriteRequest(
+                device: BluetoothDevice?,
+                requestId: Int,
+                characteristic: BluetoothGattCharacteristic?,
+                preparedWrite: Boolean,
+                responseNeeded: Boolean,
+                offset: Int,
+                value: ByteArray?
+            ) {
+                if (characteristic?.uuid == pingCharUUID) {
+                    val msg = value?.toString(Charsets.UTF_8)
+                    if (msg == "PING") {
+                        characteristic.value = "PONG".toByteArray(Charsets.UTF_8)
+                        gattServer?.notifyCharacteristicChanged(device, characteristic, false)
+                    }
+                }
+            }
         })
 
         val service = BluetoothGattService(serviceUUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
         val characteristic = BluetoothGattCharacteristic(
-            charUUID,
-            BluetoothGattCharacteristic.PROPERTY_READ,
-            BluetoothGattCharacteristic.PERMISSION_READ
+            pingCharUUID,
+            BluetoothGattCharacteristic.PROPERTY_WRITE or BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE,
+            BluetoothGattCharacteristic.PERMISSION_WRITE
         )
         service.addCharacteristic(characteristic)
         gattServer?.addService(service)
