@@ -1,16 +1,23 @@
 # wink
 
-A new Flutter project.
+Social app that allows users to discover others within close-proximity range and ping each other to know each other more!
 
-## Getting Started
+## Project Description
+Below are the hand written diagrams for brief overview of the user flow of this app.
 
-This project is a starting point for a Flutter application.
+![project brainstorm image 1](/docs/images/brainstorm_1.png)
+![project brainstorm image 2](/docs/images/brainstorm_2.png)
 
-A few resources to get you started if this is your first Flutter project:
+> At least 2 users are required for the user flow to happen
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+1. User A opens the app (wink)
+1. Wink utilises the local device's bluetooth to scan other devices nearby with Wink service installed (using the service ID attached to the application), followd by displaying the available nearby devices
+1. User A then clicks one of the displayed devices to make connection with User B
+1. Wink will make an API call to the server using the discovered deviceID from the discovery phase.
+1. User B will receive push notification from the server that user A has liked (pinged) the user.
+1. User B will also send a like (ping) back to User A, which will be handled by the API service
+1. Both Users A and B have liked each other, which will then reveal their pre-stated social media ID to continue further conversation
+1. End of the user flow
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 2. Technologies Used
+* Flutter was used to easily compile app for cross-platforms (ios & Android)
